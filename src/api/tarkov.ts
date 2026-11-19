@@ -4,7 +4,7 @@ import { get, set } from 'idb-keyval'
 import type { GameData, HideoutStation, Item, Requirement, Task, Trader, GameMap } from '../types'
 
 const ENDPOINT = 'https://api.tarkov.dev/graphql'
-const CACHE_KEY = 'gamedata-v1'
+const CACHE_KEY = 'gamedata-v2' // v2: マップの nameId を追加
 export const GAME_MODE = 'regular' // PvP
 export const STALE_MS = 6 * 60 * 60 * 1000 // 6時間で再取得
 
@@ -32,7 +32,7 @@ query Full($lang: LanguageCode, $gm: GameMode) {
     id name normalizedName imageLink
     levels { level requiredPlayerLevel requiredReputation requiredCommerce }
   }
-  maps(lang: $lang, gameMode: $gm) { id name normalizedName }
+  maps(lang: $lang, gameMode: $gm) { id name normalizedName nameId }
   tasks(lang: $lang, gameMode: $gm) {
     id name normalizedName wikiLink experience
     trader { id }
@@ -119,6 +119,7 @@ export function buildGameData(ja: Json, en: Json, fetchedAt = Date.now()): GameD
   const maps: GameMap[] = (ja.maps ?? []).map((m: Json) => ({
     id: m.id,
     normalizedName: m.normalizedName,
+    nameId: m.nameId,
     name: { ja: m.name, en: enMaps.get(m.id)?.name ?? m.name },
   }))
 
@@ -235,7 +236,7 @@ export function shapeFromJson(raw: Json, tr: Json): Json {
         requiredReputation: l.requiredReputation, requiredCommerce: l.requiredCommerce,
       })),
     })),
-    maps: Object.values(raw.maps ?? {}).map((m: Json) => ({ id: m.id, name: L(m.name), normalizedName: m.normalizedName })),
+    maps: Object.values(raw.maps ?? {}).map((m: Json) => ({ id: m.id, name: L(m.name), normalizedName: m.normalizedName, nameId: m.nameId })),
     tasks: Object.values(raw.tasks ?? {}).map((t: Json) => ({
       id: t.id, name: L(t.name), normalizedName: t.normalizedName, wikiLink: t.wikiLink, experience: t.experience,
       trader: { id: t.trader }, map: t.map ? { id: t.map } : null,

@@ -7,15 +7,22 @@ export type ProgressEvent =
   | { type: 'taskStarted'; taskId: string; at: number }
   | { type: 'taskCompleted'; taskId: string; at: number }
   | { type: 'taskFailed'; taskId: string; at: number }
-  | { type: 'raidStarted'; map: string; at: number } // map はログ上のマップ名（tarkov.dev の nameId 相当）
+  | { type: 'raidStarted'; map: string; raidId?: string; at: number } // map はログ上のマップ名（tarkov.dev の nameId）
   | { type: 'fleaSold'; itemId: string; count: number; priceRUB: number; at: number }
   | { type: 'playerLevel'; level: number; at: number }
   | { type: 'hideoutLevel'; stationId: string; level: number; at: number }
   | { type: 'traderLevel'; traderId: string; level: number; at: number }
 
+/**
+ * イベントを進捗に反映する。companionCursor より古いイベントは反映済みとして飛ばす
+ * （手で直した状態を、古いログで上書きしないため）。新しいイベントが無ければ p をそのまま返す。
+ */
 export function applyEvents(p: Progress, events: ProgressEvent[]): Progress {
+  const cursor = p.companionCursor ?? 0
+  const fresh = events.filter((e) => e && typeof e.at === 'number' && e.at > cursor).sort((a, b) => a.at - b.at)
+  if (!fresh.length) return p
   let next: Progress = { ...p, tasks: { ...p.tasks }, hideout: { ...p.hideout }, traderLL: { ...p.traderLL } }
-  for (const e of [...events].sort((a, b) => a.at - b.at)) {
+  for (const e of fresh) {
     switch (e.type) {
       case 'taskStarted':
         if (next.tasks[e.taskId] !== 'done') next.tasks[e.taskId] = 'active'
@@ -43,5 +50,5 @@ export function applyEvents(p: Progress, events: ProgressEvent[]): Progress {
         break
     }
   }
-  return { ...next, updatedAt: Date.now() }
+  return { ...next, companionCursor: fresh[fresh.length - 1].at, updatedAt: Date.now() }
 }

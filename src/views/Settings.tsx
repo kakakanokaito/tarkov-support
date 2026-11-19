@@ -3,9 +3,14 @@ import { useApp } from '../AppContext'
 import { ancestors, factionOk, taskDepths } from '../logic'
 import { Stepper, Term, rub } from '../components/common'
 import { defaultProgress, normalizeProgress } from '../store/progress'
+import { COMPANION_DOWNLOAD, pairCode } from '../store/companion'
+import LiveCard, { ago, useNow } from '../components/LiveCard'
+import { Check, Copy, Download, Monitor, Radio } from 'lucide-react'
 
 export default function Settings() {
-  const { idx, data, progress, update, replaceProgress, refresh, loading, loadError, sync, syncSettings, connectSync, disconnectSync, syncNow } = useApp()
+  const { idx, data, progress, update, replaceProgress, refresh, loading, loadError, sync, syncSettings, connectSync, disconnectSync, syncNow, liveConnected, companionAt } = useApp()
+  const [copied, setCopied] = useState(false)
+  const now = useNow(10000)
   const [token, setToken] = useState('')
   const [syncMsg, setSyncMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
@@ -141,6 +146,42 @@ export default function Settings() {
           </>
         )}
         {syncMsg && <p className="ok-msg">{syncMsg}</p>}
+      </section>
+
+      <section className="card companion">
+        <h2 className="label">Companion<span>Windows常駐ソフト</span></h2>
+        {!syncSettings.token ? (
+          <p className="muted small">先に上の「端末間の同期」を設定してください。</p>
+        ) : (
+          <>
+            <ol className="steps">
+              <li>
+                <Monitor size={18} aria-hidden />
+                <span>ゲームPCで入手して起動</span>
+                <a className="btn" href={COMPANION_DOWNLOAD}><Download size={15} aria-hidden /> .exe</a>
+              </li>
+              <li>
+                <Copy size={18} aria-hidden />
+                <span>連携コードを常駐ソフトに貼る</span>
+                <button onClick={() => {
+                  navigator.clipboard.writeText(pairCode(syncSettings)).then(() => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }, () => window.prompt('連携コード', pairCode(syncSettings)))
+                }}>
+                  {copied ? <><Check size={15} aria-hidden /> コピー済み</> : 'コピー'}
+                </button>
+              </li>
+            </ol>
+            <div className="companion-status">
+              <span className={`live-dot${liveConnected ? ' on' : ''}`}><Radio size={14} aria-hidden /></span>
+              <span className="small">{liveConnected ? '受信待機中' : '未接続'}</span>
+              <span className="small muted">{companionAt ? `最終記録 ${ago(companionAt, now)}` : 'まだ記録なし'}</span>
+            </div>
+            <LiveCard force />
+            <p className="muted small">連携コードには同期用トークンが入っています。人に見せないでください。</p>
+          </>
+        )}
       </section>
 
       <section className="card">

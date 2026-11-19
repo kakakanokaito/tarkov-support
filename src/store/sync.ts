@@ -3,6 +3,8 @@
 // ・進捗は非公開Gistの1ファイルに丸ごと保存し、updatedAt が新しい方を採用（後勝ち）
 import type { Progress } from '../types'
 import { normalizeProgress } from './progress'
+import { COMPANION_FILE, parseCompanionFile } from './companion'
+import type { CompanionFile } from './companion'
 
 const SETTINGS_KEY = 'tarkov-support.sync.v1'
 const FILE_NAME = 'tarkov-support-progress.json'
@@ -67,17 +69,26 @@ export async function findOrCreateGist(token: string, initial: Progress): Promis
   return created.id
 }
 
-export async function pullRemote(s: SyncSettings): Promise<Progress | null> {
-  const g = await gh(s.token, `/gists/${s.gistId}`)
-  const f = g.files?.[FILE_NAME]
+async function fileText(f: { content?: string; truncated?: boolean; raw_url?: string } | undefined) {
   if (!f) return null
-  let content: string = f.content
-  if (f.truncated && f.raw_url) content = await (await fetch(f.raw_url)).text()
-  try {
-    return normalizeProgress(JSON.parse(content))
-  } catch {
-    return null
+  if (f.truncated && f.raw_url) return (await fetch(f.raw_url)).text()
+  return f.content ?? null
+}
+
+/** 進捗と、常駐ソフトが書いたイベント（あれば）をまとめて取ってくる */
+export async function pullRemote(s: SyncSettings): Promise<{ progress: Progress | null; companion: CompanionFile | null }> {
+  const g = await gh(s.token, `/gists/${s.gistId}`)
+  const content = await fileText(g.files?.[FILE_NAME])
+  const companion = parseCompanionFile(await fileText(g.files?.[COMPANION_FILE]).catch(() => null))
+  let progress: Progress | null = null
+  if (content) {
+    try {
+      progress = normalizeProgress(JSON.parse(content))
+    } catch {
+      progress = null
+    }
   }
+  return { progress, companion }
 }
 
 export async function pushRemote(s: SyncSettings, p: Progress): Promise<void> {

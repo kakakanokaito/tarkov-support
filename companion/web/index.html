@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tarkov Companion</title>
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0b0c0a; --surface: #121410; --surface-2: #181a15; --line: #24271f; --line-2: #363a2e;
+  --text: #e4e1d3; --text-2: #aeac9b; --muted: #727363; --accent: #c8a85e; --accent-ink: #15130c;
+  --red: #c9573f; --amber: #d39d3c; --green: #8fa95b;
+  --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --sans: 'Yu Gothic UI', 'Meiryo UI', 'Noto Sans JP', system-ui, sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; font: 14px/1.55 var(--sans); color: var(--text); background: var(--bg);
+  background-image: linear-gradient(rgba(200,190,150,.022) 1px, transparent 1px), linear-gradient(90deg, rgba(200,190,150,.022) 1px, transparent 1px);
+  background-size: 32px 32px; min-height: 100vh;
+}
+.wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 60px; }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+.mark { width: 34px; height: 34px; border: 1px solid var(--accent); display: grid; place-items: center; color: var(--accent); border-radius: 3px; }
+.brand { font: 700 15px/1.1 var(--mono); letter-spacing: .14em; }
+.brand small { display: block; font-size: 10px; color: var(--muted); letter-spacing: .3em; margin-top: 3px; }
+.ver { margin-left: auto; font: 11px var(--mono); color: var(--muted); }
+.label { font: 600 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+@media (max-width: 560px) { .grid { grid-template-columns: 1fr; } }
+.tile, .card { background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+.tile { padding: 14px; display: flex; gap: 12px; align-items: center; min-width: 0; }
+.tile svg { flex: none; color: var(--text-2); }
+.tile .v { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; margin-left: auto; }
+.dot.ok { background: var(--green); } .dot.warn { background: var(--amber); } .dot.ng { background: var(--red); }
+.card { padding: 18px; margin-top: 14px; }
+.card h2 { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; }
+.row { display: flex; gap: 8px; align-items: center; }
+input[type=text] { flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line-2); color: var(--text); padding: 9px 10px; border-radius: 3px; font: 13px var(--mono); }
+input[type=text]:focus { outline: none; border-color: var(--accent); }
+button { font: inherit; cursor: pointer; border-radius: 3px; padding: 8px 14px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.hint { color: var(--muted); font-size: 12px; margin: 8px 0 0; }
+.err { color: var(--red); font-size: 13px; margin-top: 8px; }
+.pos { display: flex; gap: 22px; align-items: center; }
+.compass { width: 88px; height: 88px; border: 1px solid var(--line-2); border-radius: 50%; position: relative; flex: none; }
+.compass::before { content: 'N'; position: absolute; top: 3px; left: 50%; transform: translateX(-50%); font: 10px var(--mono); color: var(--muted); }
+.compass svg { position: absolute; inset: 0; margin: auto; transition: transform .4s; color: var(--accent); }
+.big { font: 600 20px var(--mono); letter-spacing: .04em; }
+.sub { color: var(--text-2); font: 13px var(--mono); }
+ul.ev { list-style: none; margin: 0; padding: 0; }
+ul.ev li { display: flex; gap: 10px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
+ul.ev li:first-child { border-top: 0; }
+ul.ev .t { color: var(--muted); font: 12px var(--mono); margin-left: auto; white-space: nowrap; }
+ul.ev .id { font: 12px var(--mono); color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tag { font: 600 10px var(--mono); letter-spacing: .1em; padding: 2px 6px; border-radius: 2px; border: 1px solid var(--line-2); white-space: nowrap; }
+.tag.s { color: var(--accent); border-color: rgba(200,168,94,.4); } .tag.c { color: var(--green); border-color: rgba(143,169,91,.4); }
+.tag.f { color: var(--red); border-color: rgba(201,87,63,.4); } .tag.r { color: var(--text-2); }
+details summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details summary::-webkit-details-marker { display: none; }
+.field { margin-top: 14px; }
+.field .label { display: block; margin-bottom: 6px; }
+.switch { display: flex; align-items: center; gap: 10px; margin-top: 14px; cursor: pointer; }
+.switch input { accent-color: var(--accent); width: 16px; height: 16px; }
+.empty { color: var(--muted); font-size: 13px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-doc" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></symbol>
+</svg>
+<div class="wrap">
+  <header>
+    <div class="mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg></div>
+    <div class="brand">TARKOV<small>COMPANION</small></div>
+    <div class="ver" id="ver"></div>
+  </header>
+
+  <div class="grid">
+    <div class="tile"><svg width="22" height="22"><use href="#i-doc"/></svg><div style="min-width:0"><div class="label">Logs</div><div class="v" id="logs">—</div></div><span class="dot" id="d-logs"></span></div>
+    <div class="tile"><svg width="22" height="22"><use href="#i-cam"/></svg><div style="min-width:0"><div class="label">Shots</div><div class="v" id="shots">—</div></div><span class="dot" id="d-shots"></span></div>
+    <div class="tile"><svg width="22" height="22"><use href="#i-link"/></svg><div style="min-width:0"><div class="label">Link</div><div class="v" id="link">—</div></div><span class="dot" id="d-link"></span></div>
+  </div>
+
+  <div class="card" id="pair" hidden>
+    <h2><svg width="18" height="18"><use href="#i-link"/></svg><span class="label">Pairing</span></h2>
+    <div class="row"><input type="text" id="code" placeholder="TKS1-…" autocomplete="off" spellcheck="false"><button class="primary" id="pairBtn">連携</button></div>
+    <p class="hint">アプリの「設定 → 常駐ソフト」でコピーした連携コードを貼る</p>
+    <div class="err" id="pairErr"></div>
+  </div>
+
+  <div class="card">
+    <h2><svg width="18" height="18"><use href="#i-pin"/></svg><span class="label">Position</span></h2>
+    <div class="pos">
+      <div class="compass"><svg id="arrow" width="26" height="40" viewBox="0 0 26 40"><path d="M13 2 24 38 13 30 2 38z" fill="currentColor"/></svg></div>
+      <div>
+        <div class="big" id="map">—</div>
+        <div class="sub" id="xyz">スクショキーで更新</div>
+        <div class="sub" id="age"></div>
+      </div>
+    </div>
+    <div class="actions"><button id="testBtn">テスト送信</button></div>
+  </div>
+
+  <div class="card">
+    <h2><svg width="18" height="18"><use href="#i-list"/></svg><span class="label">Events</span><span class="label" style="margin-left:auto" id="count"></span></h2>
+    <ul class="ev" id="events"></ul>
+  </div>
+
+  <details class="card" id="settings">
+    <summary><svg width="18" height="18"><use href="#i-gear"/></svg><span class="label">Settings</span></summary>
+    <div class="field"><span class="label">Logs フォルダ</span><div class="row"><input type="text" id="logsPath" placeholder="自動で探す"><button data-save="logsPath">保存</button></div></div>
+    <div class="field"><span class="label">Screenshots フォルダ</span><div class="row"><input type="text" id="shotsPath" placeholder="自動で探す"><button data-save="screenshotsPath">保存</button></div></div>
+    <label class="switch"><input type="checkbox" id="autostart">Windows 起動時に自動で起動</label>
+    <label class="switch"><input type="checkbox" id="delShots">読み取ったスクショを削除</label>
+    <div class="actions">
+      <button id="rescanBtn">過去ログを読み直す</button>
+      <button id="unpairBtn" hidden>連携を解除</button>
+    </div>
+    <div class="err" id="setErr"></div>
+  </details>
+</div>
+<script>
+const MAPS = { bigmap: 'カスタム', factory4_day: '工場', factory4_night: '工場（夜）', woods: 'ウッズ', shoreline: 'ショアライン',
+  interchange: 'インターチェンジ', laboratory: 'ラボ', rezervbase: 'リザーブ', tarkovstreets: 'ストリート', lighthouse: 'ライトハウス',
+  sandbox: 'グラウンドゼロ', sandbox_high: 'グラウンドゼロ', labyrinth: 'ラビリンス', terminal: 'ターミナル' }
+const mapName = (m) => m ? (MAPS[m.toLowerCase()] || m) : '—'
+const TYPES = { taskStarted: ['受注', 's'], taskCompleted: ['完了', 'c'], taskFailed: ['失敗', 'f'], raidStarted: ['レイド', 'r'], fleaSold: ['売却', 'r'] }
+const $ = (id) => document.getElementById(id)
+// タスク・アイテム名（取れなければIDのまま表示）
+const NAMES = {}
+fetch('https://api.tarkov.dev/graphql', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ query: '{ tasks(lang: ja) { id name } }' }) })
+  .then((r) => r.json()).then((j) => { for (const t of j.data?.tasks || []) NAMES[t.id] = t.name }).catch(() => {})
+function ago(ms) {
+  if (!ms) return ''
+  const s = Math.max(0, (Date.now() - ms) / 1000)
+  if (s < 60) return Math.floor(s) + '秒前'
+  if (s < 3600) return Math.floor(s / 60) + '分前'
+  if (s < 86400) return Math.floor(s / 3600) + '時間前'
+  return Math.floor(s / 86400) + '日前'
+}
+function hm(ms) { const d = new Date(ms); return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') }
+async function post(path, body) {
+  const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-TKS': '1' }, body: JSON.stringify(body || {}) })
+  return r.json()
+}
+function dot(id, s) { $(id).className = 'dot ' + s }
+let first = true
+async function refresh() {
+  let s
+  try { s = await (await fetch('/api/status')).json() } catch { dot('d-link', 'ng'); $('link').textContent = '停止中'; return }
+  $('ver').textContent = 'v' + s.version
+  $('logs').textContent = s.logsFound ? (s.mode ? s.mode.toUpperCase() : '監視中') : '見つかりません'
+  $('logs').title = s.logsPath || ''
+  dot('d-logs', s.logsFound ? (s.mode === 'pve' ? 'warn' : 'ok') : 'ng')
+  $('shots').textContent = s.shotsFound ? '監視中' : 'フォルダなし'
+  $('shots').title = s.shotsPath || ''
+  dot('d-shots', s.shotsFound ? 'ok' : 'warn')
+  const sy = s.sync
+  if (!s.paired) { $('link').textContent = '未連携'; dot('d-link', 'warn') }
+  else if (sy.gistError) { $('link').textContent = sy.gistError; dot('d-link', 'ng') }
+  else if (sy.liveError) { $('link').textContent = sy.liveError; dot('d-link', 'warn') }
+  else { $('link').textContent = sy.gistOk || sy.liveOk ? '送信 ' + ago(Math.max(sy.gistOk, sy.liveOk)) : '待機中'; dot('d-link', 'ok') }
+  $('pair').hidden = s.paired
+  $('unpairBtn').hidden = !s.paired
+
+  const p = s.position
+  if (p) {
+    $('map').textContent = mapName(p.map)
+    $('xyz').textContent = 'X ' + p.x.toFixed(1) + '  Z ' + p.z.toFixed(1) + '  H ' + p.y.toFixed(1)
+    $('age').textContent = ago(p.at)
+    $('arrow').style.transform = 'rotate(' + p.yaw + 'deg)'
+  } else if (s.curMap) {
+    $('map').textContent = mapName(s.curMap)
+  }
+
+  $('count').textContent = s.eventCount ? s.eventCount + ' 件' : ''
+  const ul = $('events')
+  ul.innerHTML = ''
+  if (!s.events.length) ul.innerHTML = '<li class="empty">まだありません</li>'
+  for (const e of s.events) {
+    const [label, cls] = TYPES[e.type] || [e.type, 'r']
+    const li = document.createElement('li')
+    const tag = document.createElement('span'); tag.className = 'tag ' + cls; tag.textContent = label
+    const id = document.createElement('span'); id.className = 'id'
+    id.textContent = e.type === 'raidStarted' ? mapName(e.map) : e.type === 'fleaSold' ? (e.itemId + ' ×' + e.count + '  ' + (e.priceRUB || 0).toLocaleString() + '₽') : (NAMES[e.taskId] || e.taskId)
+    const t = document.createElement('span'); t.className = 't'; t.textContent = hm(e.at)
+    li.append(tag, id, t); ul.append(li)
+  }
+  if (first) {
+    $('logsPath').value = s.config.logsPath || ''
+    $('shotsPath').value = s.config.screenshotsPath || ''
+    $('autostart').checked = !!s.config.autostart
+    $('delShots').checked = !!s.config.deleteScreenshots
+    first = false
+  }
+}
+$('pairBtn').onclick = async () => {
+  $('pairErr').textContent = ''
+  const r = await post('/api/config', { pairCode: $('code').value })
+  if (r.error) $('pairErr').textContent = r.error
+  refresh()
+}
+document.querySelectorAll('[data-save]').forEach((b) => {
+  b.onclick = async () => {
+    const key = b.dataset.save
+    const input = key === 'logsPath' ? $('logsPath') : $('shotsPath')
+    const r = await post('/api/config', { [key]: input.value })
+    $('setErr').textContent = r.error || ''
+    refresh()
+  }
+})
+$('autostart').onchange = async (e) => { const r = await post('/api/config', { autostart: e.target.checked }); $('setErr').textContent = r.error || '' }
+$('delShots').onchange = (e) => post('/api/config', { deleteScreenshots: e.target.checked })
+$('rescanBtn').onclick = async () => { await post('/api/rescan'); refresh() }
+$('unpairBtn').onclick = async () => { if (confirm('連携を解除しますか？')) { await post('/api/config', { unpair: true }); refresh() } }
+$('testBtn').onclick = async () => { await post('/api/test'); setTimeout(refresh, 300) }
+refresh()
+setInterval(refresh, 2000)
+</script>
+</body>
+</html>

@@ -6,6 +6,7 @@ import type { ReasonKind } from '../logic/goals'
 import { taskInfo, factionOk } from '../logic'
 import { Stepper, useNav, WithTerms } from '../components/common'
 import type { Policy } from '../types'
+import LiveCard from '../components/LiveCard'
 
 const POLICIES: { v: Policy; label: string }[] = [
   { v: 'balance', label: 'バランス' },
@@ -55,6 +56,8 @@ export default function Home() {
           <ChevronRight size={18} aria-hidden />
         </button>
       )}
+
+      <LiveCard />
 
       <section>
         <div className="section-head">

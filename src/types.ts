@@ -17,6 +17,8 @@ export interface Trader {
 export interface GameMap {
   id: string
   normalizedName: string
+  /** ゲーム内部のマップ名（ログ・常駐ソフトで使う。例: bigmap） */
+  nameId?: string
   name: Names
 }
 
@@ -128,4 +130,6 @@ export interface Progress {
   setupDone: boolean
   /** 最後に始めたレイド（常駐ソフトのログ連携で入る） */
   lastRaid?: { map: string; at: number }
+  /** 常駐ソフトのイベントをどこまで反映したか（イベントの時刻ms） */
+  companionCursor?: number
 }

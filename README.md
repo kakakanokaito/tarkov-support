@@ -13,6 +13,11 @@ Mac・Windows・iPadのブラウザで使え、iPadではホーム画面に追�
 - **アイテム**：日本語・英語・略称・ひらがなで検索。タスク／ハイドアウトでの必要数と4分類（売ってはダメ／取っておく／売ってOK／捨ててOK）、一番高い売り先
 - **設定**：初期設定（レベル・陣営・LL・トレーダーごとの完了位置）、端末間同期、進捗のファイル保存
 
+## Windows 常駐ソフト（フェーズ3）
+
+ゲームPCに置くと、ログからタスクの受注・完了やレイド開始を自動で反映し、スクショキーを押すとiPadに現在地が出ます。
+設定 → 常駐ソフト からダウンロードと連携ができます。詳しくは [companion/README.md](companion/README.md)。
+
 ## データ
 
 - ゲームデータは [tarkov.dev](https://tarkov.dev) の GraphQL API（PvP、日本語＋英語）から毎回取得し、6時間キャッシュします。自前ではデータを持ちません。
@@ -40,5 +45,7 @@ src/logic/goals.ts     今やるべきことの点数づけ
 src/store/progress.ts  進捗の保存
 src/store/sync.ts      Gist同期
 src/store/events.ts    外部（常駐ソフトのログ読み取り）からの自動更新の入口
+src/store/companion.ts 常駐ソフトとの連携（Gistの記録・ntfyの即時連絡・連携コード）
 src/views/             各画面
+companion/             Windows 常駐ソフト（Go）。詳しくは companion/README.md
 ```

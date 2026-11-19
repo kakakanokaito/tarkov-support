@@ -9,6 +9,8 @@ import { findOrCreateGist, loadSyncSettings, pullRemote, pushRemote, saveSyncSet
 import type { SyncSettings } from './store/sync'
 import { applyEvents } from './store/events'
 import type { ProgressEvent } from './store/events'
+import { liveTopic, loadLastPosition, saveLastPosition, subscribeLive } from './store/companion'
+import type { LivePosition } from './store/companion'
 
 export type SyncState =
   | { kind: 'off' }
@@ -33,6 +35,12 @@ interface Ctx {
   connectSync: (token: string) => Promise<void>
   disconnectSync: () => void
   syncNow: () => void
+  /** 常駐ソフトから届いた現在地 */
+  livePos: LivePosition | null
+  /** 常駐ソフトの即時連絡（ntfy）につながっているか */
+  liveConnected: boolean
+  /** 常駐ソフトが最後にGistへ書いた時刻 */
+  companionAt: number
 }
 
 const AppCtx = createContext<Ctx | null>(null)
@@ -51,6 +59,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [syncSettings, setSyncSettings] = useState<SyncSettings>(loadSyncSettings)
   const [sync, setSync] = useState<SyncState>({ kind: 'off' })
   const lastSynced = useRef(0)
+  const [livePos, setLivePos] = useState<LivePosition | null>(loadLastPosition)
+  const [liveConnected, setLiveConnected] = useState(false)
+  const [companionAt, setCompanionAt] = useState(0)
 
   // ── ゲームデータ ──
   const refresh = useCallback(async () => {
@@ -102,8 +113,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const applyProgressEvents = useCallback((events: ProgressEvent[]) => {
     setProgress((p) => {
       const next = applyEvents(p, events)
-      saveProgress(next)
+      if (next !== p) saveProgress(next)
       return next
+    })
+  }, [])
+
+  const acceptPosition = useCallback((pos: LivePosition | null | undefined) => {
+    if (!pos || typeof pos.x !== 'number') return
+    setLivePos((cur) => {
+      if (cur && cur.at >= pos.at) return cur
+      saveLastPosition(pos)
+      return pos
     })
   }, [])
 
@@ -115,7 +135,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!s.token || !s.gistId) return
     setSync({ kind: 'syncing' })
     try {
-      const remote = await pullRemote(s)
+      const { progress: remote, companion } = await pullRemote(s)
       const local = progressRef.current
       if (remote && remote.updatedAt > local.updatedAt) {
         replaceProgress(remote)
@@ -126,11 +146,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         lastSynced.current = local.updatedAt
       }
+      if (companion) {
+        applyProgressEvents(companion.events)
+        acceptPosition(companion.position)
+        setCompanionAt(companion.updatedAt)
+      }
       setSync({ kind: 'ok', at: Date.now() })
     } catch (e) {
       setSync({ kind: 'error', message: e instanceof Error ? e.message : String(e) })
     }
-  }, [replaceProgress])
+  }, [replaceProgress, applyProgressEvents, acceptPosition])
 
   // 起動時・画面に戻った時に取り込む
   useEffect(() => {
@@ -141,8 +166,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
     doPull(syncSettings)
     const onVis = () => document.visibilityState === 'visible' && doPull(syncSettings)
     document.addEventListener('visibilitychange', onVis)
-    return () => document.removeEventListener('visibilitychange', onVis)
+    // 開いている間は時々取り込む（常駐ソフトの記録の取りこぼし対策）
+    const iv = setInterval(() => document.visibilityState === 'visible' && doPull(syncSettings), 3 * 60 * 1000)
+    return () => {
+      document.removeEventListener('visibilitychange', onVis)
+      clearInterval(iv)
+    }
   }, [syncSettings, doPull])
+
+  // 常駐ソフトからの即時連絡（画面が見えている間だけつなぐ）
+  useEffect(() => {
+    if (!syncSettings.token || !syncSettings.gistId) return
+    let stop: (() => void) | null = null
+    let alive = true
+    const connect = async () => {
+      if (stop || document.visibilityState !== 'visible') return
+      const topic = await liveTopic(syncSettings)
+      if (!alive || stop) return
+      stop = subscribeLive(topic, { pos: acceptPosition, events: applyProgressEvents, state: setLiveConnected })
+    }
+    const disconnect = () => {
+      stop?.()
+      stop = null
+      setLiveConnected(false)
+    }
+    const onVis = () => (document.visibilityState === 'visible' ? connect() : disconnect())
+    connect()
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', onVis)
+      disconnect()
+    }
+  }, [syncSettings, acceptPosition, applyProgressEvents])
 
   // ローカルで変更したら少し待って送る
   useEffect(() => {
@@ -184,7 +240,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const value: Ctx = {
     data, idx, needs, loading, loadError, refresh, progress, update, replaceProgress, applyProgressEvents,
-    sync, syncSettings, connectSync, disconnectSync, syncNow,
+    sync, syncSettings, connectSync, disconnectSync, syncNow, livePos, liveConnected, companionAt,
   }
   return <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
 }

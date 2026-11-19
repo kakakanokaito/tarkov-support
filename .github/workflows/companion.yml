@@ -1,0 +1,41 @@
+name: Build Windows companion
+
+# companion/ を変えて main に push すると、Windows 用の exe を作ってリリースに置く。
+# ダウンロード: https://github.com/<owner>/<repo>/releases/latest/download/TarkovCompanion.exe
+on:
+  push:
+    branches: [main]
+    paths: ['companion/**', '.github/workflows/companion.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: companion/go.mod
+          cache-dependency-path: companion/go.sum
+      - run: go test ./...
+      - name: Build exe
+        run: GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H=windowsgui -s -w" -o TarkovCompanion.exe .
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(sed -n 's/^var version = "\(.*\)"/\1/p' main.go)
+          TAG="companion-v${VERSION}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" TarkovCompanion.exe --clobber
+          else
+            gh release create "$TAG" TarkovCompanion.exe --target "$GITHUB_SHA" --latest \
+              --title "常駐ソフト v${VERSION}" \
+              --notes "Windows 用の常駐ソフト。TarkovCompanion.exe をダウンロードして起動。"
+          fi
