@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { useApp } from '../AppContext'
-import { itemSearchKey, judge, normalizeQuery, totalCount } from '../logic'
+import { isStrict, isWeak, itemSearchKey, judge, matchScore, normalizeQuery, totalCount } from '../logic'
 import type { Verdict } from '../logic'
 import { ItemIcon, ItemName, rub, VerdictBadge, useNav } from '../components/common'
 import { Search } from 'lucide-react'
@@ -17,17 +17,15 @@ export default function Items() {
   const results = useMemo(() => {
     const nq = normalizeQuery(dq)
     if (!nq) return []
-    const exact: typeof keys[number][0][] = []
-    const part: typeof keys[number][0][] = []
+    const hits: { it: typeof keys[number][0]; score: number }[] = []
     for (const [it, key] of keys) {
-      const fields = key.split('|')
-      if (fields.some((f) => f === nq)) exact.push(it)
-      else if (key.includes(nq)) part.push(it)
+      const score = matchScore(key, nq)
+      if (score !== null) hits.push({ it, score })
     }
-    // 必要なものを上に
-    const rank = (id: string) => (needs.has(id) ? 0 : 1)
-    part.sort((a, b) => rank(a.id) - rank(b.id) || a.name.ja.length - b.name.ja.length)
-    return [...exact, ...part].slice(0, 60)
+    // 当たり具合 → 必要なもの → 名前の短い順
+    const rank = (id: string) => (needs.get(id)?.some(isStrict) ? 0 : 1)
+    hits.sort((a, b) => a.score - b.score || rank(a.it.id) - rank(b.it.id) || a.it.name.ja.length - b.it.name.ja.length)
+    return hits.slice(0, 60).map((h) => h.it)
   }, [dq, keys, needs])
 
   const neededList = useMemo(() => {
@@ -36,7 +34,9 @@ export default function Items() {
     for (const [id, ns] of needs) {
       const it = idx.item.get(id)
       if (!it) continue
-      const fir = ns.some((n) => n.foundInRaid)
+      // 選択肢の多い「どれか1種」だけのアイテムは一覧に出さない
+      if (ns.every(isWeak)) continue
+      const fir = ns.some((n) => n.foundInRaid && !isWeak(n))
       if (onlyFir && !fir) continue
       rows.push({ id, count: totalCount(ns), fir, verdict: judge(it, ns, progress).verdict })
     }
@@ -70,8 +70,8 @@ export default function Items() {
                   <ItemName item={it} />
                   <span className="result-right">
                     <VerdictBadge v={j.verdict} />
-                    {j.needs.length > 0 && <small>必要 {totalCount(j.needs)}</small>}
-                    {j.needs.length === 0 && j.sells.best && <small>{rub(j.sells.best.priceRUB)}</small>}
+                    {totalCount(j.needs) > 0 && <small>必要 {totalCount(j.needs)}</small>}
+                    {totalCount(j.needs) === 0 && j.sells.best && <small>{rub(j.sells.best.priceRUB)}</small>}
                   </span>
                 </button>
               </li>

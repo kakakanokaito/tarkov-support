@@ -180,6 +180,7 @@ export interface Need {
   foundInRaid: boolean
   kappa: boolean
   anyOf: boolean // 複数アイテムのどれか1つでよい
+  options: number // 選べるアイテムの種類数（1なら指定アイテムのみ）
   soonLevel?: boolean // 次に建てる施設レベル
 }
 
@@ -204,6 +205,7 @@ export function buildNeeds(idx: Index, p: Progress): Map<string, Need[]> {
           foundInRaid: o.foundInRaid,
           kappa: t.kappaRequired,
           anyOf: o.itemIds.length > 1,
+          options: o.itemIds.length,
         })
       }
     }
@@ -221,6 +223,7 @@ export function buildNeeds(idx: Index, p: Progress): Map<string, Need[]> {
           foundInRaid: r.foundInRaid,
           kappa: false,
           anyOf: false,
+          options: 1,
           soonLevel: l.level === cur + 1,
         })
       }
@@ -229,7 +232,13 @@ export function buildNeeds(idx: Index, p: Progress): Map<string, Need[]> {
   return needs
 }
 
-export const totalCount = (ns: Need[]) => ns.reduce((a, n) => a + n.count, 0)
+/** 選択肢が多い「どれか1種」は、そのアイテムでなくても済むので判定に使わない */
+export const ANY_OF_MAX = 5
+export const isStrict = (n: Need) => !n.anyOf
+export const isWeak = (n: Need) => n.anyOf && n.options > ANY_OF_MAX
+
+/** 必要数の合計（「どれか1種」は他のアイテムで代用できるので数えない） */
+export const totalCount = (ns: Need[]) => ns.filter(isStrict).reduce((a, n) => a + n.count, 0)
 
 // ───── アイテム4分類 ─────
 
@@ -276,10 +285,12 @@ export function judge(item: Item, needs: Need[] | undefined, p: Progress): Judge
   const slots = item.width * item.height
   const perSlot = sells.best ? Math.round(sells.best.priceRUB / slots) : 0
   const reasons: string[] = []
-  const fir = ns.filter((n) => n.source === 'task' && n.foundInRaid)
-  const kappa = ns.filter((n) => n.kappa)
-  const hideout = ns.filter((n) => n.source === 'hideout')
-  const otherTask = ns.filter((n) => n.source === 'task' && !n.foundInRaid && !n.kappa)
+  const strict = ns.filter(isStrict)
+  const fir = strict.filter((n) => n.source === 'task' && n.foundInRaid)
+  const kappa = strict.filter((n) => n.kappa)
+  const hideout = strict.filter((n) => n.source === 'hideout')
+  const otherTask = strict.filter((n) => n.source === 'task' && !n.foundInRaid && !n.kappa)
+  const fewChoice = ns.filter((n) => n.anyOf && !isWeak(n))
 
   if (CURRENCY.has(item.normalizedName)) {
     return { verdict: ns.length ? 'hold' : 'sell', reasons: ['通貨'], needs: ns, perSlot, sells }
@@ -291,11 +302,12 @@ export function judge(item: Item, needs: Need[] | undefined, p: Progress): Judge
     if (otherTask.length) reasons.push(`他タスク ${totalCount(otherTask)}個`)
     return { verdict: 'keep', reasons, needs: ns, perSlot, sells }
   }
-  if (otherTask.length) {
-    reasons.push(`タスク ${totalCount(otherTask)}個（購入でも可）`)
+  if (otherTask.length || fewChoice.length) {
+    if (otherTask.length) reasons.push(`タスク ${totalCount(otherTask)}個（購入でも可）`)
+    for (const n of fewChoice) reasons.push(`${n.label}：${n.options}種のどれか${n.count}個`)
     return { verdict: 'hold', reasons, needs: ns, perSlot, sells }
   }
-  reasons.push('使い道なし')
+  reasons.push(ns.length ? '他のアイテムでも代用できる' : '使い道なし')
   if (perSlot >= p.sellThreshold) {
     reasons.push(`${perSlot.toLocaleString()}₽ / マス`)
     return { verdict: 'sell', reasons, needs: ns, perSlot, sells }
@@ -318,8 +330,46 @@ export function normalizeQuery(s: string): string {
     .replace(/[\s・\-_.。、"'()（）]/g, '')
 }
 
-export function itemSearchKey(i: Item): string {
-  return [i.name.ja, i.name.en, i.shortName.ja, i.shortName.en, i.normalizedName]
-    .map(normalizeQuery)
-    .join('|')
+// 日本語の通称（ゲーム内表記と違う呼び方）。normalizedName → 通称
+const ALIASES: Record<string, string[]> = {
+  'salewa-first-aid-kit': ['サレワ'],
+  'can-of-beef-stew-large': ['トゥションカ', 'ツションカ'],
+  'can-of-beef-stew-small': ['トゥションカ', 'ツションカ'],
+  'graphics-card': ['グラボ', 'ジーピーユー'],
+  'ledx-skin-transilluminator': ['レドックス'],
+  'physical-bitcoin': ['ビットコイン', 'ビトコ'],
+  'secure-flash-drive': ['フラッシュドライブ'],
+  'gas-analyzer': ['ガスアナ'],
+  'bundle-of-wires': ['ワイヤー'],
+  'military-power-filter': ['ミリフィル'],
+  'tetriz-portable-game-console': ['テトリス'],
+}
+
+export interface SearchKey {
+  /** 正規化した名前（日本語名・英語名・略称・通称） */
+  fields: string[]
+  /** 英語名などを単語に分けたもの（前方一致用） */
+  words: string[]
+}
+
+export function itemSearchKey(i: Item): SearchKey {
+  const names = [i.name.ja, i.name.en, i.shortName.ja, i.shortName.en, ...(ALIASES[i.normalizedName] ?? [])]
+  return {
+    fields: [...names, i.normalizedName].map(normalizeQuery).filter(Boolean),
+    words: names
+      .flatMap((n) => n.split(/[\s\-_.・/()（）,"']+/))
+      .map(normalizeQuery)
+      .filter(Boolean),
+  }
+}
+
+/** 検索の当たり具合。小さいほど良い。当たらなければ null */
+export function matchScore(k: SearchKey, nq: string): number | null {
+  if (k.fields.some((f) => f === nq)) return 0
+  if (k.fields.some((f) => f.startsWith(nq))) return 1
+  if (k.words.some((w) => w.startsWith(nq))) return 2
+  // 英数字だけの検索は単語の途中に当てない（"gpu" が "magpul" に当たるのを防ぐ）
+  if (/^[a-z0-9]+$/.test(nq)) return null
+  if (k.fields.some((f) => f.includes(nq))) return 3
+  return null
 }

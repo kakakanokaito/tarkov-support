@@ -205,11 +205,113 @@ export function buildGameData(ja: Json, en: Json, fetchedAt = Date.now()): GameD
   return { fetchedAt, gameMode: GAME_MODE, traders, maps, tasks, stations, items }
 }
 
-export async function fetchGameData(): Promise<GameData> {
-  const [ja, en] = await Promise.all([
-    gqlWithFallback(FULL_QUERY, 'ja'),
-    gqlWithFallback(NAMES_QUERY, 'en'),
+// ───── 予備の取得先: json.tarkov.dev ─────
+// GraphQL API が落ちている時（"GraphQL server unavailable" など）用。
+// tarkov.dev が API の元データとして公開している JSON を読み、GraphQL と同じ形に組み直す。
+const JSON_BASE = 'https://json.tarkov.dev/' + GAME_MODE + '/'
+
+async function getJson(name: string): Promise<Json> {
+  const res = await fetch(JSON_BASE + name)
+  if (!res.ok) throw new Error(`json.tarkov.dev エラー: ${name} HTTP ${res.status}`)
+  return (await res.json()).data
+}
+
+const ids = (xs: Json[] | undefined) => (xs ?? []).filter(Boolean).map((x: Json) => ({ id: typeof x === 'string' ? x : x.id }))
+
+/** 生データ（翻訳キー入り）を、指定言語の GraphQL 応答と同じ形にする */
+export function shapeFromJson(raw: Json, tr: Json): Json {
+  const L = (k: unknown) => (typeof k === 'string' && k in tr ? tr[k] : k)
+  const traders = Object.values(raw.traders ?? {}) as Json[]
+  const traderById = new Map(traders.map((t) => [t.id, t]))
+  const treq = (r: Json) => ({
+    trader: { id: r.trader }, requirementType: r.requirementType ?? 'level',
+    compareMethod: r.compareMethod ?? '>=', value: r.value ?? r.level,
+  })
+  return {
+    traders: traders.map((t) => ({
+      id: t.id, name: L(t.name), normalizedName: t.normalizedName, imageLink: t.imageLink,
+      levels: (t.levels ?? []).map((l: Json) => ({
+        level: l.level, requiredPlayerLevel: l.requiredPlayerLevel,
+        requiredReputation: l.requiredReputation, requiredCommerce: l.requiredCommerce,
+      })),
+    })),
+    maps: Object.values(raw.maps ?? {}).map((m: Json) => ({ id: m.id, name: L(m.name), normalizedName: m.normalizedName })),
+    tasks: Object.values(raw.tasks ?? {}).map((t: Json) => ({
+      id: t.id, name: L(t.name), normalizedName: t.normalizedName, wikiLink: t.wikiLink, experience: t.experience,
+      trader: { id: t.trader }, map: t.map ? { id: t.map } : null,
+      minPlayerLevel: t.minPlayerLevel, kappaRequired: t.kappaRequired, lightkeeperRequired: t.lightkeeperRequired,
+      factionName: t.factionName,
+      taskRequirements: (t.taskRequirements ?? []).map((r: Json) => ({ task: { id: r.task }, status: r.status })),
+      traderRequirements: (t.traderRequirements ?? []).map(treq),
+      objectives: (t.objectives ?? []).map((o: Json) => ({
+        id: o.id, type: o.type, description: L(o.description), optional: !!o.optional,
+        maps: ids(o.maps),
+        items: Array.isArray(o.items) ? ids(o.items) : o.item ? ids([o.item]) : undefined,
+        count: o.count, foundInRaid: o.foundInRaid,
+      })),
+      finishRewards: { traderUnlock: ids(t.finishRewards?.traderUnlock) },
+    })),
+    hideoutStations: Object.values(raw.hideout ?? {}).map((s: Json) => ({
+      id: s.id, name: L(s.name), normalizedName: s.normalizedName, imageLink: s.imageLink,
+      levels: (s.levels ?? []).map((l: Json) => ({
+        level: l.level, constructionTime: l.constructionTime, description: L(l.description),
+        itemRequirements: (l.itemRequirements ?? []).map((r: Json) => ({
+          item: { id: r.item }, count: r.count,
+          attributes: Object.entries(r.attributes ?? {}).map(([k, v]) => ({ type: k, name: k, value: String(v) })),
+        })),
+        stationLevelRequirements: (l.stationLevelRequirements ?? []).map((r: Json) => ({ station: { id: r.station }, level: r.level })),
+        traderRequirements: (l.traderRequirements ?? []).map(treq),
+        skillRequirements: (l.skillRequirements ?? []).map((r: Json) => ({ name: L(r.name ?? r.skill), level: r.level })),
+      })),
+    })),
+    items: Object.values(raw.items ?? {}).map((i: Json) => {
+      const sellFor = (i.sellToTrader ?? [])
+        .filter((p: Json) => traderById.has(p.trader))
+        .map((p: Json) => {
+          const t = traderById.get(p.trader)
+          return { priceRUB: p.priceRUB, vendor: { name: L(t.name), normalizedName: t.normalizedName } }
+        })
+      const types: string[] = i.types ?? []
+      if (i.lastLowPrice && !types.includes('noFlea'))
+        sellFor.push({ priceRUB: i.lastLowPrice, vendor: { name: 'Flea Market', normalizedName: 'flea-market' } })
+      return {
+        id: i.id, name: L(i.name), shortName: L(i.shortName), normalizedName: i.normalizedName, iconLink: i.iconLink,
+        width: i.width, height: i.height, basePrice: i.basePrice, avg24hPrice: i.avg24hPrice ?? null, types, sellFor,
+      }
+    }),
+  }
+}
+
+async function fetchFromJson(): Promise<{ ja: Json; en: Json }> {
+  const names = ['items', 'tasks', 'hideout', 'traders', 'maps'] as const
+  const [base, ja, en] = await Promise.all([
+    Promise.all(names.map(getJson)),
+    Promise.all(names.map((n) => getJson(`${n}_ja`))),
+    Promise.all(names.map((n) => getJson(`${n}_en`))),
   ])
+  const raw = {
+    items: base[0].items, tasks: base[1].tasks, hideout: base[2], traders: base[3], maps: base[4].maps,
+  }
+  const merge = (xs: Json[]) => Object.assign({}, ...xs)
+  return { ja: shapeFromJson(raw, merge(ja)), en: shapeFromJson(raw, merge(en)) }
+}
+
+export async function fetchGameData(): Promise<GameData> {
+  let ja: Json, en: Json
+  try {
+    ;[ja, en] = await Promise.all([
+      gqlWithFallback(FULL_QUERY, 'ja'),
+      gqlWithFallback(NAMES_QUERY, 'en'),
+    ])
+  } catch (e) {
+    console.warn('GraphQL API が使えないので json.tarkov.dev から取得します', e)
+    try {
+      ;({ ja, en } = await fetchFromJson())
+    } catch (e2) {
+      console.warn('json.tarkov.dev も失敗', e2)
+      throw e
+    }
+  }
   const data = buildGameData(ja, en)
   await set(CACHE_KEY, data).catch(() => {})
   return data

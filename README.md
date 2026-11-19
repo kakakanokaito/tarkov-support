@@ -16,6 +16,7 @@ Mac・Windows・iPadのブラウザで使え、iPadではホーム画面に追�
 ## データ
 
 - ゲームデータは [tarkov.dev](https://tarkov.dev) の GraphQL API（PvP、日本語＋英語）から毎回取得し、6時間キャッシュします。自前ではデータを持ちません。
+- GraphQL API が落ちている時は、tarkov.dev が公開している元データ（json.tarkov.dev）から同じ形に組み直して使います。
 - 進捗はブラウザ（localStorage）に保存。端末間同期は GitHub の非公開 Gist を使います（設定画面で gist 権限だけのトークンを貼る）。
 
 ## 開発

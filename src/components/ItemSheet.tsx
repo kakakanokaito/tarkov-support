@@ -40,7 +40,7 @@ export default function ItemSheet() {
 
         {j.needs.length > 0 && (
           <section>
-            <h3>使い道（合計 {totalCount(j.needs).toLocaleString()}個）</h3>
+            <h3>使い道{totalCount(j.needs) > 0 && `（合計 ${totalCount(j.needs).toLocaleString()}個）`}</h3>
             <ul className="need-list">
               {j.needs.map((n, i) => (
                 <li key={i}>
@@ -54,7 +54,7 @@ export default function ItemSheet() {
                   <span className="need-count">×{n.count.toLocaleString()}</span>
                   {n.foundInRaid && <Term k="FIR" />}
                   {n.kappa && <span className="tag kappa">Kappa</span>}
-                  {n.anyOf && <span className="tag">どれか1種</span>}
+                  {n.anyOf && <span className="tag">{n.options}種のどれか</span>}
                 </li>
               ))}
             </ul>
